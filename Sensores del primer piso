@@ -1,0 +1,255 @@
+#include <WiFi.h>
+#include <Wire.h> //I2C connection
+//#include <ESP32Servo.h>
+#include <Arduino.h>
+#include <PubSubClient.h>
+#include <Adafruit_Sensor.h>
+#include "DHT.h"
+
+// Replace with your network credentials
+// const char *ssid = "ITSWEB_3_45";
+// const char *password = "FAMILIAZACARIAS2023";
+#define WIFI_SSID "TCL 20E"
+#define WIFI_PASSWORD "CrisBerganza"
+#define ADAFRUIT_USER "anderson2006"
+#define ADAFRUIT_KEY "aio_klaN93JS054ea4STkHuszTLntg5v"
+#define ADAFRUIT_SERVER "io.adafruit.com"
+#define ADAFRUIT_PORT 1883
+char ADAFRUIT_ID[30];
+// Publicar
+#define ADAFRUIT_FEED_HUM3  ADAFRUIT_USER "/feeds/hum3"
+#define ADAFRUIT_FEED_TEM3  ADAFRUIT_USER "/feeds/temperatura3"
+
+#define ADAFRUIT_FEED_HUM4  ADAFRUIT_USER "/feeds/hum4"
+#define ADAFRUIT_FEED_TEM4  ADAFRUIT_USER "/feeds/temperatura4"
+#define ADAFRUIT_FEED_GAS  ADAFRUIT_USER "/feeds/gas"
+#define ADAFRUIT_FEED_HIG  ADAFRUIT_USER "/feeds/hig"
+// Suscripción
+#define ADAFRUIT_DATA_IN   ADAFRUIT_USER "/feeds/data_in"
+//Servo servo;
+
+
+// Set web server port number to 80
+// WiFiServer server(80);
+
+// Variable to store the HTTP request
+// String header;
+
+// Current time
+// unsigned long currentTime = millis();
+// // Previous time
+// unsigned long previousTime = 0;
+// // Define timeout time in milliseconds (example: 2000ms = 2s)
+// const long timeoutTime = 2000;
+
+// int state = 0; // 0 off, 1 on
+// int state2 = 0;
+// int state4 = 0;
+// int state5= 0;
+#define SENSOR_PIN 35 
+#define DHTPIN1    4
+#define DHTPIN2    5
+#define DHTTYPE DHT11 
+DHT dht1(DHTPIN1, DHTTYPE);
+DHT dht2(DHTPIN2, DHTTYPE);
+float ValHum3, ValTem3 = 0;
+float ValHum4, ValTem4 = 0;
+// int led1=12;//pin led
+// int led2=13; //pin buzzer
+// int led3=19;//pin led
+//Servo
+//int pinServo=18;
+//Higometro
+const int humsuelo = 33;    //Lectura del sensor
+int valHumsuelo;
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+long lastMsg = 0;
+
+//*****
+//* DECLARACION FUNCIONES *
+//*****
+void setup_wifi();
+void callback(char* topic, byte* payload, unsigned int length);
+void reconnect();
+void mqtt_publish(String feed, float val);
+void get_MQTT_ID();
+
+void setup() {
+  Serial.begin(115200);
+  delay(10);
+  // pinMode(led1,OUTPUT);
+  //  pinMode(led2,OUTPUT);
+  //  pinMode(led3,OUTPUT);
+   pinMode(humsuelo, INPUT);
+  //servo.attach(pinServo, 500, 2500);
+  //  Wire.begin(21, 22);
+  get_MQTT_ID();
+    setup_wifi();
+    client.setServer(ADAFRUIT_SERVER, ADAFRUIT_PORT);
+    client.setCallback(callback);
+
+    dht1.begin(); //Inicializa el sensor dht
+    dht2.begin(); //Inicializa el sensor dht
+
+     // Connect to Wi-Fi network with SSID and password
+//   Serial.print("Connecting to ");
+//   Serial.println(ssid);
+//   WiFi.begin(ssid,password );
+//   while (WiFi.status() != WL_CONNECTED)
+//   {
+//     delay(500);
+//     Serial.print(".");
+//   }
+//   // Print local IP address and start web server
+//   Serial.println("");
+//   Serial.println("WiFi connected.");
+//   Serial.println("IP address: ");
+//   Serial.println(WiFi.localIP());
+//   server.begin();
+}
+
+void loop() {
+   
+  if (!client.connected()) 
+    {
+      reconnect();
+     }
+
+    client.loop();
+    
+    long now = millis();
+
+    if (now - lastMsg > 6500)
+    {
+      lastMsg = now;
+      valHumsuelo = map(analogRead(humsuelo), 4092, 0, 0, 100);
+
+  //Imprimir valor
+  Serial.print("Humedad del suelo: ");
+  Serial.print(valHumsuelo);
+  Serial.println(" %");
+  delay(2700);
+   // Publicar
+   mqtt_publish(ADAFRUIT_FEED_HIG, valHumsuelo);
+     
+      //xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+      ValHum3 = dht1.readHumidity();
+      ValTem3 = dht1.readTemperature();
+
+      ValHum4 = dht2.readHumidity();
+      ValTem4 = dht2.readTemperature();
+      int valor = analogRead(SENSOR_PIN);  // Lee el valor del sensor
+   Serial.println(valor);  // Imprime el valor en el monitor serial
+   delay(2700);
+
+      
+                
+      if (isnan(ValHum3) || isnan(ValTem3) || isnan(ValHum4) || isnan(ValTem4) ) {
+          ValHum3 = 0;
+          ValTem3 = 0;
+          ValHum4 = 0;
+          ValTem4 = 0;
+        
+          Serial.println(F("Error de lectura del sensor DHT11!"));
+      }
+              
+      Serial.println((String) "Humedad1: " + ValHum3 + "%  Temperatura1: " + ValTem3 + " Humedad2: " + ValHum4 + "%  Temperatura2: " + ValTem4 );
+      // Publicar
+       mqtt_publish(ADAFRUIT_FEED_HUM3, ValHum3);
+       mqtt_publish(ADAFRUIT_FEED_TEM3, ValTem3);
+        delay(2500);
+       mqtt_publish(ADAFRUIT_FEED_HUM4, ValHum4);
+       mqtt_publish(ADAFRUIT_FEED_TEM4, ValTem4);
+        delay(2500);
+       mqtt_publish(ADAFRUIT_FEED_GAS, valor);
+        delay(2500);
+       mqtt_publish(ADAFRUIT_FEED_HIG, valHumsuelo);
+       delay(2500);
+       
+    }
+
+} 
+ 
+
+
+// void LED(){
+//     servo.write(0);
+// }
+
+// void LED_Apagada(){
+//   servo.write(90);
+// }
+
+
+void mqtt_publish(String feed, float val){
+    String value = String(val);
+    if(client.connected()){
+        client.publish(feed.c_str(), value.c_str());
+        Serial.println("Publicando al tópico: " + String(feed) + " | mensaje: " + value);        
+    }     
+    }
+    void setup_wifi()
+{
+    delay(10);
+    
+    // Nos conectamos a nuestra red Wifi
+    Serial.println();
+    Serial.print("Conectando a ");
+    Serial.println(String(WIFI_SSID));
+
+    //Serial.println(ssid);
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+    while (WiFi.status() != WL_CONNECTED) {
+      delay(500);
+      Serial.print(".");
+    }
+
+    Serial.println("");
+    Serial.println("Conectado a red WiFi!");
+    Serial.println("Dirección IP: ");
+    Serial.println(WiFi.localIP());
+}
+
+// Función para capturar data por MQTT
+void callback(char *topic, byte *payload, unsigned int length)
+{
+    String mensaje  = "";
+    String str_topic(topic); 
+
+    for (uint16_t i = 0; i < length; i++){
+        mensaje += (char)payload[i];
+    }
+
+    mensaje.trim();
+
+    Serial.println("Tópico: " + str_topic);
+    Serial.println("Mensaje: " + mensaje); 
+}
+
+// Capturar el ChipID para Id de MQTT
+void get_MQTT_ID(){
+    uint64_t chipid = ESP.getEfuseMac();    
+    snprintf(ADAFRUIT_ID, sizeof(ADAFRUIT_ID),"%llu", chipid );
+}
+
+void reconnect() 
+{
+    while (!client.connected()) 
+    {   
+        if(client.connect(ADAFRUIT_ID, ADAFRUIT_USER, ADAFRUIT_KEY))
+        {
+           Serial.println("MQTT conectado!");
+            client.subscribe(ADAFRUIT_DATA_IN);
+            Serial.println("Suscrito al tópico: " + String(ADAFRUIT_DATA_IN));
+       
+          } else {
+            Serial.print("falló :( con error -> ");
+            Serial.print(client.state());
+            Serial.println(" Intentamos de nuevo en 5 segundos");
+            delay(5000);
+          }
+      }
+}
